@@ -558,6 +558,13 @@ void View::process_touch_event(ViewObject::touch_event event, int x, int y){
     }
 }
 
+void View::reattach_captured_windows(){
+    std::for_each(std::rbegin(captured_window_elements), std::rend(captured_window_elements), [this](auto& element){
+        element->get_object().set_owner(this);
+        element->get_object().change_window_pos(IntRect{element->region}, HWND_TOP, true, viewport.get_background_clolor());
+    });
+}
+
 void View::update_view(bool entire){
     if (entire){
         FloatRect rect{viewport.get_output_region()};
@@ -1028,6 +1035,12 @@ void ViewPort::update(){
     }
 }
 
+void ViewPort::reattach_captured_windows(){
+    if (is_enable){
+        views[current_view]->reattach_captured_windows();
+    }
+}
+
 void ViewPort::invalidate_rect(const FloatRect& rect){
     if (is_enable){
         std::unique_lock lock(rendering_mutex);
@@ -1328,6 +1341,14 @@ void ViewPortManager::update_viewports(){
     }
 }
 
+void ViewPortManager::reattach_captured_windows(){
+    if (status == Status::running){
+        for (auto& viewport : viewports){
+            viewport->reattach_captured_windows();
+        }
+    }
+}
+
 std::shared_ptr<ViewPort> ViewPortManager::create_viewport(sol::object def_obj){
     std::lock_guard lock(mutex);
     if (status == Status::init){
@@ -1348,16 +1369,14 @@ void ViewPortManager::start_viewports(){
             throw MapperException("no viewports is defined");
         }
 
-        if (captured_windows.size() > 0 || image_streamers.size() > 0){
-            change_status(Status::ready_to_start);
-            lock.unlock();
-            engine.notifyUpdate(MapperEngine::UPDATED_READY_TO_CAPTURE);
-            return;
-        }
+        bool has_captures = captured_windows.size() > 0 || image_streamers.size() > 0;
 
         auto prev_status = status;
         change_status(Status::starting);
         lock.unlock();
+        if (has_captures){
+            engine.notifyUpdate(MapperEngine::UPDATED_READY_TO_CAPTURE);
+        }
         try{
             enable_viewport_primitive();
         }catch (MapperException&){

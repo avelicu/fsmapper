@@ -54,6 +54,7 @@ public:
     static constexpr auto UPDATED_VIEWPORTS_STATUS = 0x10;
     static constexpr auto UPDATED_READY_TO_CAPTURE = 0x20;
     static constexpr auto UPDATED_LOST_CAPTURED_WINDOW = 0x40;
+    static constexpr auto UPDATED_CAPTURED_WINDOW = 0x80;
 
 protected : 
     std::mutex mutex;

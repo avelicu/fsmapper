@@ -71,6 +71,7 @@ void CapturedWindow::release_window(){
 
 bool CapturedWindow::change_window_pos(const IntRect& rect, HWND hwnd_insert_after, bool show, COLORREF bgcolor){
     if (hwnd){
+        fallback_window.hide();
         hookdll_changeWindowAtrribute(hwnd, hwnd_insert_after, rect.x, rect.y, rect.width, rect.height, show);
     }else{
         if (show){

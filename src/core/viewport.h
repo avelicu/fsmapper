@@ -183,6 +183,7 @@ public:
     void hide();
     void process_touch_event(ViewObject::touch_event event, int x, int y);
     void update_view(bool entire);
+    void reattach_captured_windows();
     bool render_view(graphics::render_target& render_target, const FloatRect& rect);
     HWND getBottomWnd();
     Action* findAction(uint64_t evid);
@@ -298,6 +299,7 @@ public:
     void disable();
     void process_touch_event();
     void update();
+    void reattach_captured_windows();
     Action* findAction(uint64_t evid);
     std::pair<int, int> getMappingsStat();
     bool findCapturedWindow(FloatPoint point, View::CapturedWindowAttributes& attrs);
@@ -363,6 +365,7 @@ public:
 
     void process_touch_event();
     void update_viewports();
+    void reattach_captured_windows();
 
     // functions to export as Lua function in mapper table
     std::shared_ptr<ViewPort> create_viewport(sol::object def_obj);
