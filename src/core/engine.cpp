@@ -506,6 +506,9 @@ bool MapperEngine::run(std::string&& scriptPath){
                 if (flags & UPDATED_LOST_CAPTURED_WINDOW){
                     sendHostEvent(MEV_LOST_CAPTURED_WINDOW, 0);
                 }
+                if (flags & UPDATED_CAPTURED_WINDOW){
+                    scripting.viewportManager->reattach_captured_windows();
+                }
                 lock.lock();
             }
 
@@ -729,6 +732,7 @@ void MapperEngine::register_captured_window(uint32_t cwid, HWND hWnd){
     std::lock_guard lock(mutex);
     if (status == Status::running){
         scripting.viewportManager->register_captured_window(cwid, hWnd);
+        notifyUpdateWithNoLock(UPDATED_CAPTURED_WINDOW);
     }
 }
 

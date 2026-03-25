@@ -397,7 +397,6 @@ namespace winrt::gui::Models::implementation{
                 if (mask & property_captured_windows){
                     window_capturer = nullptr;
                     lock.unlock();
-                    mapper_stopViewPort(mapper);
                     enum_captured_windows_context cw_list;
                     mapper_enumCapturedWindows(mapper, enum_captured_window_callback, &cw_list);
                     co_await ui_thread;
@@ -702,9 +701,12 @@ namespace winrt::gui::Models::implementation{
         }else if (event == MEV_CHANGE_VIEWPORTS){
             dirty_properties |= property_viewports;
             cv.notify_all();
-        }else if (event == MEV_READY_TO_CAPTURE_WINDOW || event == MEV_RESET_VIEWPORTS || event == MEV_LOST_CAPTURED_WINDOW){
+        }else if (event == MEV_RESET_VIEWPORTS){
             viewport_is_active = false;
             dirty_properties |= (property_captured_windows | property_viewports | property_viewport_is_active);
+            cv.notify_all();
+        }else if (event == MEV_READY_TO_CAPTURE_WINDOW || event == MEV_LOST_CAPTURED_WINDOW){
+            dirty_properties |= (property_captured_windows | property_viewports);
             cv.notify_all();
         }else if (event == MEV_STOP_VIEWPORTS){
             viewport_is_active = false;
