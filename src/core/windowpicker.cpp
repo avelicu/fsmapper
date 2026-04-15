@@ -73,7 +73,7 @@ protected:
 
     void preCreateWindow(CREATESTRUCTA& cs) override{
         SimpleWindow::preCreateWindow(cs);
-        cs.dwExStyle = WS_EX_LAYERED | WS_EX_TOPMOST;
+        cs.dwExStyle = WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW;
         cs.x = rect.x;
         cs.y = rect.y;
         cs.cx = rect.width;

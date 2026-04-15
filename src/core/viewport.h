@@ -228,6 +228,10 @@ public:
         }
         void hide(){showWindow(SW_HIDE);}
     protected:
+        void preCreateWindow(CREATESTRUCTA& cs) override{
+            parent_class::preCreateWindow(cs);
+            cs.dwExStyle |= WS_EX_TOOLWINDOW;
+        }
         bool onEraseBackground(HDC hdc) override{
             RECT rect;
             ::GetClientRect(*this, &rect);
