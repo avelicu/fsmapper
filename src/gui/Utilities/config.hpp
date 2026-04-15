@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <map>
 #include "mappercore.h"
 
 namespace fsmapper{
@@ -106,6 +107,10 @@ namespace fsmapper{
         // Migration evidence
         virtual const char* get_migration_done_version() = 0;
         virtual void set_migration_done_version(const char* value) = 0;
+
+        // Script-specific configuration
+        virtual std::map<std::string, std::string> load_script_config(const std::filesystem::path& script_path) = 0;
+        virtual void save_script_config(const std::filesystem::path& script_path, const std::string& key, const std::string& value) = 0;
     };
 
     void init_app_config();

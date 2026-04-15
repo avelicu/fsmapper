@@ -481,6 +481,56 @@ public:
             cli_script_path = std::nullopt;
         }
     }
+
+
+    std::map<std::string, std::string> load_script_config(const std::filesystem::path& lua_path) override {
+        std::map<std::string, std::string> settings;
+        std::filesystem::path path(lua_path);
+        path.replace_extension(".json");
+        if (std::filesystem::exists(path)) {
+            try {
+                std::ifstream ifs(path.string());
+                json data;
+                ifs >> data;
+                if (data.is_object()) {
+                    for (auto& [key, value] : data.items()) {
+                        if (value.is_string()) {
+                            settings[key] = value.get<std::string>();
+                        }
+                    }
+                }
+            } catch (...) {
+                // Ignore errors
+            }
+        }
+        return settings;
+    }
+
+    void save_script_config(const std::filesystem::path& lua_path, const std::string& key, const std::string& value) override {
+        std::filesystem::path path(lua_path);
+        path.replace_extension(".json");
+        json data;
+        if (std::filesystem::exists(path)) {
+            try {
+                std::ifstream ifs(path.string());
+                ifs >> data;
+            } catch (...) {
+                data = json::object();
+            }
+        } else {
+            data = json::object();
+        }
+
+        if (data[key] != value) {
+            data[key] = value;
+            try {
+                std::ofstream os(path.string());
+                os << data.dump(4);
+            } catch (...) {
+                // Ignore errors
+            }
+        }
+    }
 };
 
 static void migrate_config(){

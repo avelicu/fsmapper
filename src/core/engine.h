@@ -23,6 +23,7 @@
 #include "tools.h"
 #include "devlog.h"
 #include "luac_mod.h"
+#include "config_option.h"
 
 class DeviceManager;
 class DeviceModifier;
@@ -55,9 +56,10 @@ public:
     static constexpr auto UPDATED_READY_TO_CAPTURE = 0x20;
     static constexpr auto UPDATED_LOST_CAPTURED_WINDOW = 0x40;
     static constexpr auto UPDATED_CAPTURED_WINDOW = 0x80;
+    static constexpr auto UPDATED_CONFIG_OPTIONS = 0x100;
 
 protected : 
-    std::mutex mutex;
+    std::recursive_mutex mutex;
     Status status;
     bool callback_is_inhibited = false;
     Callback callback;
@@ -82,6 +84,9 @@ protected :
         uint32_t updated_flags = 0;
     }scripting;
 
+    std::map<std::string, ConfigOptionPtr> config_options;
+    std::map<std::string, std::string> pending_config_values;
+
     class DeferredAction{
     protected:
         std::shared_ptr<Action> action;
@@ -98,7 +103,7 @@ protected :
 
     struct {
         WinHandle event_as_cv;
-        std::condition_variable cv_for_client;
+        std::condition_variable_any cv_for_client;
         uint64_t idCounter;
         std::map<uint64_t, std::string> names;
         std::queue< std::unique_ptr<Event> > queue;
@@ -228,8 +233,14 @@ public:
     bool disable_viewports();
     MAPPINGS_STAT get_mapping_stat();
     
+    // interfaces for configuration
+    void register_config_option(const std::string& key, const std::string& description, const std::vector<std::string>& choices);
+    void unregister_config_option(const std::string& key);
+    void set_config_value(const std::string& key, const std::string& value);
+    void enum_config_options(MapperHandle handle, void (*func)(MapperHandle, void*, const char* key, const char* desc, const char* value, const char* choices), void* context);
+
 protected:
-    void initScriptingEnv();
+    void initScriptingEnv(const std::string& scriptPath);
     void clearScriptingEnv();
     Action* findAction(uint64_t evid);
 

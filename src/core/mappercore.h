@@ -41,6 +41,8 @@ typedef enum mapper_event{
     MEV_START_VIEWPORTS,
     MEV_STOP_VIEWPORTS,
     MEV_RESET_VIEWPORTS,
+    MEV_CHANGE_CONFIG_OPTIONS,
+    MEV_CHANGE_CONFIG_VALUE,
 }MAPPER_EVENT;
 
 typedef uint32_t MAPPER_SIM_CONNECTION;
@@ -145,6 +147,8 @@ DLLEXPORT bool mapper_enumDevices(MapperHandle handle, MAPPER_ENUM_DEVICE_FUNC f
 DLLEXPORT bool mapper_enumCapturedWindows(MapperHandle handle, MAPPER_ENUM_CAPUTURED_WINDOW func, void* context);
 DLLEXPORT bool mapper_enumCapturedWindowTitles(MapperHandle handle, uint32_t cwid, MAPPER_ENUM_CAPTURED_WINDOW_TITLE func, void *context);
 DLLEXPORT bool mapper_enumViewport(MapperHandle handle, MAPPER_ENUM_VIEWPORT_FUNC func, void *context);
+DLLEXPORT bool mapper_enumConfigOptions(MapperHandle handle, void (*func)(MapperHandle, void*, const char* key, const char* desc, const char* value, const char* choices), void* context);
+DLLEXPORT bool mapper_setConfigOption(MapperHandle handle, const char* key, const char* value);
 DLLEXPORT bool mapper_captureWindow(MapperHandle handle, uint32_t cwid, HWND hWnd);
 DLLEXPORT bool mapper_releaseWindw(MapperHandle handle, uint32_t cwid);
 

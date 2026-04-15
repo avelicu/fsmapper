@@ -10,6 +10,7 @@
 #include "Models.View.g.cpp"
 #include "Models.Viewport.g.cpp"
 #include "Models.Message.g.cpp"
+#include "Models.ConfigOption.g.cpp"
 
 #include "App.xaml.h"
 #include "config.hpp"
@@ -47,6 +48,7 @@ static constexpr auto property_captured_windows        = 1 << 8;
 static constexpr auto property_event_msg_enabled       = 1 << 9;
 static constexpr auto property_debug_msg_enabled       = 1 << 10;
 static constexpr auto property_captured_window_status  = 1 << 11;
+static constexpr auto property_config_options          = 1 << 12;
 
 static const wchar_t* property_names[] = {
     L"ScriptPath",
@@ -61,6 +63,7 @@ static const wchar_t* property_names[] = {
     L"EventMessageIsEnabled",
     L"DebugMessageIsEnabled",
     L"CapturedWindowStatus",
+    L"ConfigOptions",
     nullptr
 };
 
@@ -94,6 +97,7 @@ namespace winrt::gui::Models::implementation{
         devices = winrt::single_threaded_vector<gui::Models::Device>();
         mappings_info = winrt::make<winrt::gui::Models::implementation::MappingsStat>();
         messages = winrt::single_threaded_observable_vector<gui::Models::Message>();
+        config_options = winrt::single_threaded_observable_vector<gui::Models::ConfigOption>();
 
         auto device = winrt::Microsoft::Graphics::Canvas::CanvasDevice::GetSharedDevice();
         auto source = winrt::Microsoft::Graphics::Canvas::UI::Xaml::CanvasImageSource(device, 40, 30, 96);
@@ -143,6 +147,13 @@ namespace winrt::gui::Models::implementation{
                 tc.move_trigger_distance = fsmapper::app_config.get_touch_move_trigger_distance();
                 tc.minimum_interval = fsmapper::app_config.get_touch_minimum_interval();
                 mapper_tools_SetTouchParameters(&tc);
+                
+                // Load script-specific config and push to engine
+                auto script_settings = fsmapper::app_config.load_script_config(fsmapper::app_config.get_script_path());
+                for (auto const& [key, value] : script_settings) {
+                    mapper_setConfigOption(mapper, key.c_str(), value.c_str());
+                }
+
                 lock.unlock();
                 auto result = mapper_run(mapper, path);
                 lock.lock();
@@ -348,6 +359,35 @@ namespace winrt::gui::Models::implementation{
     };
 
     //============================================================================================
+    // ConfigOption implementation
+    //============================================================================================
+    ConfigOption::ConfigOption(winrt::Windows::Foundation::IInspectable const& mapper, hstring const& key, hstring const& description, hstring const& initialValue, winrt::Windows::Foundation::Collections::IVectorView<winrt::Windows::Foundation::IInspectable> const& choices) :
+        mapper(winrt::make_weak(mapper.as<winrt::gui::Models::Mapper>())),
+        key(key), description(description), value(initialValue), choices(choices) {}
+
+    winrt::Windows::Foundation::IInspectable ConfigOption::Value() {
+        // Return the actual object from Choices so ComboBox can match by reference.
+        for (uint32_t i = 0; i < choices.Size(); i++) {
+            auto item = choices.GetAt(i);
+            if (item && winrt::unbox_value<hstring>(item) == value) {
+                return item;
+            }
+        }
+        return nullptr;
+    }
+
+    void ConfigOption::Value(winrt::Windows::Foundation::IInspectable const& newValue) {
+        if (!newValue) return;  // ComboBox fires null when it can't match SelectedItem; ignore it.
+        hstring val = winrt::unbox_value<hstring>(newValue);
+        if (value != val) {
+            value = val;
+            if (auto strong_mapper{ mapper.get() }) {
+                strong_mapper.as<implementation::Mapper>()->SetParameter(key, value);
+            }
+        }
+    }
+
+    //============================================================================================
     // Asynchronous event scheduling
     //============================================================================================
     Windows::Foundation::IAsyncOperation<int32_t> Mapper::scheduler_proc(){
@@ -425,11 +465,20 @@ namespace winrt::gui::Models::implementation{
                     window_capturer = std::move(capturer);
                 }
 
+                if (mask & property_config_options) {
+                    lock.unlock();
+                    co_await ui_thread;
+                    config_options.Clear();
+                    mapper_enumConfigOptions(mapper, enum_config_options_callback, this);
+                    co_await winrt::resume_background();
+                    lock.lock();
+                }
+
                 for (auto i = 0; property_names[i]; i++){
                     if (mask & (1 << i)){
                         lock.unlock();
                         co_await ui_thread;
-                         property_changed(*this, Microsoft::UI::Xaml::Data::PropertyChangedEventArgs{property_names[i]});
+                        property_changed(*this, Microsoft::UI::Xaml::Data::PropertyChangedEventArgs{property_names[i]});
                         co_await winrt::resume_background();
                         lock.lock();
                     }
@@ -540,6 +589,11 @@ namespace winrt::gui::Models::implementation{
     Mapper::MessageCollection Mapper::Messages(){
         std::lock_guard lock{mutex};
         return messages;
+    }
+
+    Mapper::ConfigOptionCollection Mapper::ConfigOptions() {
+        std::lock_guard lock{ mutex };
+        return config_options;
     }
 
     bool Mapper::EventMessageIsEnabled(){
@@ -662,6 +716,13 @@ namespace winrt::gui::Models::implementation{
         StartViewports();
     }
 
+    void Mapper::SetParameter(hstring const& key, hstring const& value) {
+        tools::utf16_to_utf8_translator utf8_key(key.c_str());
+        tools::utf16_to_utf8_translator utf8_value(value.c_str());
+        ::mapper_setConfigOption(mapper, utf8_key, utf8_value);
+        fsmapper::app_config.save_script_config(fsmapper::app_config.get_script_path(), std::string(utf8_key), std::string(utf8_value));
+    }
+
     //============================================================================================
     // Event notification
     //============================================================================================
@@ -716,6 +777,9 @@ namespace winrt::gui::Models::implementation{
             viewport_is_active = true;
             dirty_properties |= property_viewport_is_active;
             cv.notify_all();
+        }else if (event == MEV_CHANGE_CONFIG_OPTIONS) {
+            dirty_properties |= property_config_options;
+            cv.notify_all();
         }
         return true;
     }
@@ -768,6 +832,22 @@ namespace winrt::gui::Models::implementation{
             return true;
         }, &list->back());
         return true;
+    }
+
+    void Mapper::enum_config_options_callback(MapperHandle /*handle*/, void* context, const char* key, const char* desc, const char* value, const char* choices) {
+        auto self = reinterpret_cast<Mapper*>(context);
+        hstring wkey{tools::utf8_to_utf16_translator(key)};
+        hstring wdesc{tools::utf8_to_utf16_translator(desc)};
+        hstring wvalue{tools::utf8_to_utf16_translator(value)};
+        auto wchoices = winrt::single_threaded_vector<winrt::Windows::Foundation::IInspectable>();
+        std::stringstream ss(choices);
+        std::string buffer;
+        while (std::getline(ss, buffer, '\n')) {
+            wchoices.Append(winrt::box_value(winrt::to_hstring(buffer)));
+        }
+
+        auto option = winrt::make<winrt::gui::Models::implementation::ConfigOption>(self->get_strong().as<winrt::Windows::Foundation::IInspectable>(), wkey, wdesc, wvalue, wchoices.GetView());
+        self->config_options.Append(option);
     }
 
     //============================================================================================

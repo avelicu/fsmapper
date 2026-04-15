@@ -47,6 +47,7 @@ namespace winrt::gui::ViewModels::implementation{
         bool CapturedWindowsIsVisible(){return captured_windows_is_visible;}
         hstring CapturedWindowsSummary(){return captured_windows_summary;}
         bool CaptureWindowButtonIsEnabled(){return captured_window_button_is_enabled;}
+        bool ConfigPaneIsVisible() { return config_pane_is_visible; }
         winrt::Microsoft::UI::Xaml::Style StartStopViewportsButtonStyle();
 
         winrt::Windows::Foundation::IAsyncAction ToggleViewport(
@@ -92,6 +93,7 @@ namespace winrt::gui::ViewModels::implementation{
         hstring captured_windows_summary;
         bool captured_window_button_is_enabled{false};
         bool all_captured_window_is_captured{false};
+        bool config_pane_is_visible{ false };
 
         winrt::event<Microsoft::UI::Xaml::Data::PropertyChangedEventHandler> property_changed;
 
@@ -122,6 +124,7 @@ namespace winrt::gui::ViewModels::implementation{
         void reflect_mapper_Viewports();
         void reflect_mapper_Devices();
         void reflect_mapper_CapturedWindows();
+        void reflect_mapper_ConfigOptions();
         void reflect_mapper_ViewportOperability();
     };
 }

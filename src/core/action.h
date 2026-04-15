@@ -42,7 +42,7 @@ public:
         Function() = delete;
         Function(const Function&) = delete;
         Function(Function&&) =delete;
-        Function(const char* name, ACTION_FUNCTION& action): name(name), action(action){};
+        Function(const char* name, const ACTION_FUNCTION& action): name(name), action(action){};
         ~Function() = default;
         const char* getName(){return name.c_str();};
         void invoke(Event& event, sol::state& lua){action(event, lua);};
