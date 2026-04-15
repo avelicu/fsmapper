@@ -9,6 +9,7 @@
 #include "Models.Viewport.g.h"
 #include "Models.CapturedWindow.g.h"
 #include "Models.Message.g.h"
+#include "Models.ConfigOption.g.h"
 #include "Models.Mapper.g.h"
 
 #include "tools.hpp"
@@ -312,6 +313,43 @@ namespace winrt::gui::Models::factory_implementation{
 }
 
 //============================================================================================
+// ConfigOption
+//============================================================================================
+namespace winrt::gui::Models::implementation{
+    struct Mapper;
+
+    struct ConfigOption : ConfigOptionT<ConfigOption>{
+        ConfigOption() = default;
+        ConfigOption(winrt::Windows::Foundation::IInspectable const& mapper, hstring const& key, hstring const& description, hstring const& initialValue, winrt::Windows::Foundation::Collections::IVectorView<winrt::Windows::Foundation::IInspectable> const& choices);
+
+        hstring Key(){return key;}
+        hstring Description(){return description;}
+        winrt::Windows::Foundation::IInspectable Value();
+        void Value(winrt::Windows::Foundation::IInspectable const& value);
+        winrt::Windows::Foundation::Collections::IVectorView<winrt::Windows::Foundation::IInspectable> Choices(){return choices;}
+
+        winrt::event_token PropertyChanged(winrt::Microsoft::UI::Xaml::Data::PropertyChangedEventHandler const& handler){
+            return property_changed.add(handler);
+        }
+        void PropertyChanged(winrt::event_token const& token) noexcept{
+            return property_changed.remove(token);
+        }
+
+    protected:
+        winrt::weak_ref<winrt::gui::Models::Mapper> mapper;
+        hstring key;
+        hstring description;
+        hstring value;
+        winrt::Windows::Foundation::Collections::IVectorView<winrt::Windows::Foundation::IInspectable> choices;
+        winrt::event<Microsoft::UI::Xaml::Data::PropertyChangedEventHandler> property_changed;
+    };
+}
+namespace winrt::gui::Models::factory_implementation{
+    struct ConfigOption : ConfigOptionT<ConfigOption, implementation::ConfigOption>{
+    };
+}
+
+//============================================================================================
 // Mapper
 //============================================================================================
 namespace winrt::gui::Models::implementation{
@@ -325,6 +363,7 @@ namespace winrt::gui::Models::implementation{
         using ViewportCollection = winrt::Windows::Foundation::Collections::IVector<winrt::gui::Models::Viewport>;
         using CapturedWindowCollection = winrt::Windows::Foundation::Collections::IObservableVector<winrt::gui::Models::CapturedWindow>;
         using MessageCollection = winrt::Windows::Foundation::Collections::IObservableVector<winrt::gui::Models::Message>;
+        using ConfigOptionCollection = winrt::Windows::Foundation::Collections::IObservableVector<winrt::gui::Models::ConfigOption>;
 
         Mapper();
         virtual ~Mapper();
@@ -340,6 +379,7 @@ namespace winrt::gui::Models::implementation{
         DeviceCollection Devices();
         winrt::gui::Models::MappingsStat MappingsInfo();
         MessageCollection Messages();
+        ConfigOptionCollection ConfigOptions();
         bool EventMessageIsEnabled();
         void EventMessageIsEnabled(bool value);
         bool DebugMessageIsEnabled();
@@ -362,6 +402,8 @@ namespace winrt::gui::Models::implementation{
 
         void CaptureWindowBypassingGUI(uint32_t Cwid, uint64_t hWnd);
         void StartViewportsIfReady();
+
+        void SetParameter(hstring const& key, hstring const& value);
 
         winrt::event_token PropertyChanged(winrt::Microsoft::UI::Xaml::Data::PropertyChangedEventHandler const& handler);
         void PropertyChanged(winrt::event_token const& token) noexcept;
@@ -389,6 +431,7 @@ namespace winrt::gui::Models::implementation{
         DeviceCollection devices {nullptr};
         winrt::gui::Models::MappingsStat mappings_info{nullptr};
         MessageCollection messages {nullptr};
+        ConfigOptionCollection config_options {nullptr};
         bool event_message_is_enabled{false};
         bool debug_message_is_enabled{false};
         bool is_available_new_release{false};
@@ -441,6 +484,7 @@ namespace winrt::gui::Models::implementation{
         static bool enum_device_callback(MapperHandle mapper, void* context, const char* devtype, const char* devname);
         static bool enum_viewport_callback(MapperHandle mapper, void* context, VIEWPORT_DEF* vpdef);
         static bool enum_captured_window_callback(MapperHandle mapper, void* context, CAPTURED_WINDOW_DEF* cwdef);
+        static void enum_config_options_callback(MapperHandle mapper, void* context, const char* key, const char* desc, const char* value, const char* choices);
 
         Windows::Foundation::IAsyncOperation<int32_t> scheduler_proc();
         Windows::Foundation::IAsyncOperation<int32_t> message_reader_proc();

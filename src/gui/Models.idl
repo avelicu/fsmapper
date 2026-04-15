@@ -62,6 +62,16 @@ namespace gui.Models{
         String Text{get;};
     }
 
+    runtimeclass ConfigOption : Microsoft.UI.Xaml.Data.INotifyPropertyChanged {
+        ConfigOption();
+        ConfigOption(Object mapper, String key, String description, String initialValue, Windows.Foundation.Collections.IVectorView<Object> choices);
+
+        String Key{get;};
+        String Description{get;};
+        Object Value{get; set;};
+        Windows.Foundation.Collections.IVectorView<Object> Choices{get;};
+    }
+
     runtimeclass Mapper: Microsoft.UI.Xaml.Data.INotifyPropertyChanged {
         Mapper();
 
@@ -75,6 +85,7 @@ namespace gui.Models{
         Windows.Foundation.Collections.IVector<Device> Devices{get;};
         MappingsStat MappingsInfo{get;};
         Windows.Foundation.Collections.IObservableVector<Message> Messages{get;};
+        Windows.Foundation.Collections.IObservableVector<ConfigOption> ConfigOptions{get;};
         Boolean EventMessageIsEnabled;
         Boolean DebugMessageIsEnabled;
         Boolean IsAvailableNewRelease{get;};

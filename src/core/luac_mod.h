@@ -10,7 +10,7 @@
 
 namespace luac_mod{
     bool mark_async_source_signaled(FSMAPPER_LUAC_ASYNC_SOURCE source);
-    void dispatch_async_events(std::unique_lock<std::mutex>& lock);
+    void dispatch_async_events(std::unique_lock<std::recursive_mutex>& lock);
     void enable_async_sources();
     void cleanup_async_sources();
 }

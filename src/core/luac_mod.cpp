@@ -164,7 +164,7 @@ namespace luac_mod{
         engine->sendEventNoLock(std::move(event));
     }
 
-    void dispatch_async_events(std::unique_lock<std::mutex>& lock){
+    void dispatch_async_events(std::unique_lock<std::recursive_mutex>& lock){
         auto engine = mapper_EngineInstance();
         auto& lua = engine->getLuaState();
         lua_State* L = lua.lua_state();

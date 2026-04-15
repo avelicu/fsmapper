@@ -173,6 +173,17 @@ DLLEXPORT bool mapper_enumViewport(MapperHandle handle, MAPPER_ENUM_VIEWPORT_FUN
     return true;
 }
 
+DLLEXPORT bool mapper_enumConfigOptions(MapperHandle handle, void (*func)(MapperHandle, void*, const char* key, const char* desc, const char* value, const char* choices), void* context){
+    if (!handle || !handle->engine) { return false; }
+    handle->engine->enum_config_options(handle, func, context);
+    return true;
+}
+
+DLLEXPORT bool mapper_setConfigOption(MapperHandle handle, const char* key, const char* value){
+    handle->engine->set_config_value(key, value);
+    return true;
+}
+
 DLLEXPORT bool mapper_captureWindow(MapperHandle handle, uint32_t cwid, HWND hWnd){
     try{
         handle->engine->register_captured_window(cwid, hWnd);

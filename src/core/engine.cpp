@@ -15,7 +15,6 @@
 #include "simplewindow.h"
 #include "graphics.h"
 #include "keyseq.h"
-
 #include <shlobj_core.h>
 
 //============================================================================================
@@ -41,7 +40,7 @@ MapperEngine::~MapperEngine(){
 //============================================================================================
 // initialize lua scripting environment
 //============================================================================================
-void MapperEngine::initScriptingEnv(){
+void MapperEngine::initScriptingEnv(const std::string& scriptPath){
     static sol::lib libtypes[] ={
         sol::lib::base,
         sol::lib::coroutine,
@@ -231,10 +230,115 @@ void MapperEngine::initScriptingEnv(){
     std::filesystem::path saved_games_path{path};
     scripting.lua()["mapper"]["saved_games_dir"] = saved_games_path.string();
 
-    //-------------------------------------------------------------------------------
+    //----------------:---------------------------------------------------------------
     // enable unsynchronous event source for Lua C modules
     //-------------------------------------------------------------------------------
     luac_mod::enable_async_sources();
+
+
+    mapper["register_config_option"] = [this](sol::object key_obj, sol::object desc_obj, sol::object choices_obj) {
+        auto key = key_obj.as<std::string>();
+        auto description = desc_obj.as<std::string>();
+        std::vector<std::string> choices;
+        if (choices_obj.is<sol::table>()) {
+            sol::table choices_table = choices_obj.as<sol::table>();
+            for (auto const& [k, v] : choices_table) {
+                if (v.is<std::string>()) {
+                    choices.push_back(v.as<std::string>());
+                }
+            }
+        }
+        lua_c_interface(*this, "mapper:register_config_option", [this, &key, &description, &choices](){
+            register_config_option(key, description, choices);
+        });
+    };
+    mapper["unregister_config_option"] = [this](const std::string& key){
+        lua_c_interface(*this, "mapper:unregister_config_option", [this, &key](){
+            unregister_config_option(key);
+        });
+    };
+    mapper["add_config_listener"] = [this](sol::object key_obj, sol::function callback){
+        if (key_obj.is<std::string>()){
+            // single key: callback(string_value)
+            auto key = key_obj.as<std::string>();
+            lua_c_interface(*this, "mapper:add_config_listener", [this, key, callback](){
+                std::lock_guard lock(mutex);
+                auto it = config_options.find(key);
+                if (it == config_options.end()){
+                    throw MapperException("config option not found: " + key);
+                }
+                auto schedule = [this, callback](const std::string& value){
+                    auto func = [this, callback, value](Event&, sol::state&){
+                        try {
+                            callback(value);
+                        } catch (sol::error& e) {
+                            putLog(MCONSOLE_ERROR, std::string("config listener error: ") + e.what());
+                        }
+                    };
+                    auto native_func = std::make_shared<NativeAction::Function>("config_listener", func);
+                    auto action = std::make_shared<NativeAction>(native_func);
+                    Event ev(static_cast<uint64_t>(EventID::NILL));
+                    this->invokeActionIn(action, ev, MILLISEC(0));
+                };
+                schedule(it->second->getValue());
+                it->second->addListener(schedule);
+            });
+        } else if (key_obj.is<sol::table>()){
+            // multiple keys: callback({key=value, ...})
+            // initial fire delivers all current values in one call;
+            // subsequent fires deliver only the changed key.
+            std::vector<std::string> keys;
+            for (auto& [k, v] : key_obj.as<sol::table>()){
+                if (v.is<std::string>()) keys.push_back(v.as<std::string>());
+            }
+            lua_c_interface(*this, "mapper:add_config_listener", [this, keys, callback](){
+                std::lock_guard lock(mutex);
+                // validate all keys and collect current values while holding lock
+                std::map<std::string, std::string> initial_values;
+                for (auto& key : keys){
+                    auto it = config_options.find(key);
+                    if (it == config_options.end()){
+                        throw MapperException("config option not found: " + key);
+                    }
+                    initial_values[key] = it->second->getValue();
+                }
+                // fire one initial callback with all values
+                auto fire_initial = [this, callback, initial_values](Event&, sol::state& lua){
+                    sol::table result = lua.create_table();
+                    for (auto& [k, v] : initial_values) result[k] = v;
+                    try {
+                        callback(result);
+                    } catch (sol::error& e) {
+                        putLog(MCONSOLE_ERROR, std::string("config listener error: ") + e.what());
+                    }
+                };
+                auto native_func = std::make_shared<NativeAction::Function>("config_listener", fire_initial);
+                auto action = std::make_shared<NativeAction>(native_func);
+                Event ev(static_cast<uint64_t>(EventID::NILL));
+                invokeActionIn(action, ev, MILLISEC(0));
+                // register per-key change listeners, each fires with a single-entry table
+                for (auto& key : keys){
+                    auto it = config_options.find(key);
+                    auto schedule = [this, callback, key](const std::string& value){
+                        auto func = [this, callback, key, value](Event&, sol::state& lua){
+                            sol::table result = lua.create_table();
+                            result[key] = value;
+                            try {
+                                callback(result);
+                            } catch (sol::error& e) {
+                                putLog(MCONSOLE_ERROR, std::string("config listener error: ") + e.what());
+                            }
+                        };
+                        auto native_func = std::make_shared<NativeAction::Function>("config_listener", func);
+                        auto action = std::make_shared<NativeAction>(native_func);
+                        Event ev(static_cast<uint64_t>(EventID::NILL));
+                        this->invokeActionIn(action, ev, MILLISEC(0));
+                    };
+                    it->second->addListener(schedule);
+                }
+            });
+        }
+    };
 }
 
 void MapperEngine::clearScriptingEnv(){
@@ -249,6 +353,10 @@ void MapperEngine::clearScriptingEnv(){
 
     // cleanup lua cmodule async event sources
     luac_mod::cleanup_async_sources();
+
+    // clear configuration options
+    config_options.clear();
+    pending_config_values.clear();
 
     // dtop & destroy the Lua VM
     scripting.lua_ptr = nullptr;
@@ -284,7 +392,7 @@ bool MapperEngine::run(std::string&& scriptPath){
         attacher.emplace(WinDispatcher::sharedDispatcher());
     }
     try{
-        std::unique_lock<std::mutex> lock(mutex);
+        std::unique_lock lock(mutex);
 
         if  (status != Status::init){
             return false;
@@ -292,12 +400,16 @@ bool MapperEngine::run(std::string&& scriptPath){
         scripting.scriptPath = std::move(scriptPath);
 
         //-------------------------------------------------------------------------------
-        // create environment for lua script
+        // initialize logger
         //-------------------------------------------------------------------------------
         hookdll_setLogMode(options.log_mode);
         dev_logger = devlog::make_logger(options.log_mode);
+
+        //-------------------------------------------------------------------------------
+        // create environment for lua script
+        //-------------------------------------------------------------------------------
         putLog(MCONSOLE_INFO, "mapper-core: start event-action mapping");
-        initScriptingEnv();
+        initScriptingEnv(scripting.scriptPath);
 
         //-------------------------------------------------------------------------------
         // execute pre-run script
@@ -505,6 +617,9 @@ bool MapperEngine::run(std::string&& scriptPath){
                 }
                 if (flags & UPDATED_LOST_CAPTURED_WINDOW){
                     sendHostEvent(MEV_LOST_CAPTURED_WINDOW, 0);
+                }
+                if (flags & UPDATED_CONFIG_OPTIONS){
+                    sendHostEvent(MEV_CHANGE_CONFIG_OPTIONS, 0);
                 }
                 lock.lock();
             }
@@ -787,5 +902,54 @@ MAPPINGS_STAT MapperEngine::get_mapping_stat(){
         return {primary, secondary, vstat.first, vstat.second};
     }else{
         return {0, 0, 0, 0};
+    }
+}
+
+//============================================================================================
+// functions for configuration
+//============================================================================================
+
+void MapperEngine::register_config_option(const std::string& key, const std::string& description, const std::vector<std::string>& choices) {
+    std::lock_guard lock(mutex);
+    auto option = std::make_shared<ConfigOption>(key, description, choices);
+    if (pending_config_values.count(key)) {
+        option->setValue(pending_config_values[key]);
+    }
+    config_options[key] = option;
+    notifyUpdateWithNoLock(UPDATED_CONFIG_OPTIONS);
+}
+
+void MapperEngine::unregister_config_option(const std::string& key) {
+    std::lock_guard lock(mutex);
+    if (config_options.erase(key)) {
+        notifyUpdateWithNoLock(UPDATED_CONFIG_OPTIONS);
+    }
+}
+
+void MapperEngine::set_config_value(const std::string& key, const std::string& value) {
+    std::unique_lock lock(mutex);
+    pending_config_values[key] = value;
+    auto it = config_options.find(key);
+    if (it != config_options.end()) {
+        it->second->setValue(value);
+    }
+}
+
+void MapperEngine::enum_config_options(MapperHandle handle, void (*func)(MapperHandle, void*, const char*, const char*, const char*, const char*), void* context){
+    using Snapshot = std::vector<std::tuple<std::string, std::string, std::string, std::string>>;
+    Snapshot snapshot;
+    {
+        std::unique_lock lock(mutex);
+        for (auto& entry : config_options){
+            std::string choices_str;
+            for (size_t i = 0; i < entry.second->getChoices().size(); ++i) {
+                if (i) choices_str += "\n";
+                choices_str += entry.second->getChoices()[i];
+            }
+            snapshot.emplace_back(entry.first, entry.second->getDescription(), entry.second->getValue(), choices_str);
+        }
+    }
+    for (auto& [key, desc, value, choices] : snapshot){
+        func(handle, context, key.c_str(), desc.c_str(), value.c_str(), choices.c_str());
     }
 }

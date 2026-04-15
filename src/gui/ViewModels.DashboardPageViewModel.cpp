@@ -55,6 +55,8 @@ namespace winrt::gui::ViewModels::implementation{
                 reflect_mapper_ViewportOperability();
             }else if (name == L"CapturedWindowStatus"){
                 reflect_mapper_CapturedWindows();
+            }else if (name == L"ConfigOptions") {
+                reflect_mapper_ConfigOptions();
             }
         });
 
@@ -70,6 +72,7 @@ namespace winrt::gui::ViewModels::implementation{
         reflect_mapper_Viewports();
         reflect_mapper_Devices();
         reflect_mapper_CapturedWindows();
+        reflect_mapper_ConfigOptions();
         reflect_mapper_ViewportOperability();
     }
 
@@ -255,5 +258,9 @@ namespace winrt::gui::ViewModels::implementation{
         update_property(viewport_button_is_visible, cw_is_registerd, L"ViewportButtonIsVisible");
         update_property(captured_window_button_is_enabled, !viewport_is_active, L"CapturedWindowButtonIsEnabled");
         update_property(L"StartStopViewportsButtonStyle");
+    }
+
+    void DashboardPageViewModel::reflect_mapper_ConfigOptions() {
+        update_property(config_pane_is_visible, mapper.ConfigOptions().Size() > 0, L"ConfigPaneIsVisible");
     }
 }
