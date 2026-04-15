@@ -708,7 +708,7 @@ protected:
 
     void preCreateWindow(CREATESTRUCTA& cs) override{
         base_class::preCreateWindow(cs);
-        cs.dwExStyle = WS_EX_LAYERED | WS_EX_TOPMOST;
+        cs.dwExStyle = WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW;
         cs.x = entire_rect.x;
         cs.y = entire_rect.y;
         cs.cx = entire_rect.width;
